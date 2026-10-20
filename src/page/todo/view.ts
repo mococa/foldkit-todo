@@ -3,7 +3,7 @@ import { SITE_NAME } from '../../site';
 
 export const TodoPage = definePage({
   tag: 'Todo',
-  path: 'todo',
+  path: '',
   metadata: {
     title: `Todo | ${SITE_NAME}`,
     description: 'Manage your drawing studio tasks.',

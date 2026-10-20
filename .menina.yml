@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://menina.moureau.dev/schema/v1/menina.schema.json
+version: 1
+project: foldkit-todo
+environment: production
+
+vars:
+  ENVIRONMENT: production
+
+defaults:
+  context: .
+  tag: ${ENVIRONMENT}
+  registry: registry.moureau.dev
+
+apps:
+  web:
+    dockerfile: Dockerfile
+    service: { port: 8080 }
+    host: foldkit-todo.moureau.dev

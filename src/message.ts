@@ -13,6 +13,7 @@ export const Message = defineMessageUnion({
   CompletedSyncDocumentMetadata: {},
   SucceededGoogleLogin: { session: Session },
   FailedGoogleLogin: { reason: Schema.String },
+  LoadedSession: { maybeSession: Schema.Option(Session) },
 });
 
 export type Message = typeof Message.Type;

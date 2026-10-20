@@ -3,7 +3,7 @@ import { Runtime } from 'foldkit';
 import { type Document, type HtmlBuilder } from 'foldkit/html';
 
 import { Session } from './domain/session';
-import type { Message } from './internal';
+import { CheckSession, type Message } from './internal';
 import { AppRoute, pageMetadata, urlToAppRoute, viewForRoute } from './route';
 
 export { Message, update } from './internal';
@@ -21,6 +21,7 @@ export type Model = typeof Model.Type;
 // INIT
 
 export const init: Runtime.RoutingApplicationInit<Model, Message> = url => ({
+  commands: [CheckSession()],
   model: {
     route: urlToAppRoute(url),
     maybeSession: Option.none(),

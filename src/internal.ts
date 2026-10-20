@@ -1,9 +1,11 @@
-import { Effect, Option, Schema } from 'effect';
+import { Array, Effect, Option, Schema } from 'effect';
 import { Command, type Update } from 'foldkit';
 import { UrlRequest, load, pushUrl } from 'foldkit/navigation';
 import { modifyFields } from 'foldkit/struct';
 import { toString as urlToString } from 'foldkit/url';
 
+import { basebox, sessionStore } from './basebox';
+import type { Session } from './domain/session';
 import { type FrameworkHeadTag, FrameworkMetadata } from './lib/router';
 import type { Model } from './main';
 import { AppRoute, headTags, href, pageMetadata, urlToAppRoute } from './route';
@@ -36,6 +38,56 @@ const LoadExternal = Command.define('LoadExternal', {
   messages: [Message.CompletedLoadExternal],
   execute: ({ href }) =>
     load(href).pipe(Effect.as(Message.CompletedLoadExternal())),
+});
+
+export const CheckSession = Command.define('CheckSession', {
+  messages: [Message.LoadedSession],
+  execute: Effect.tryPromise({
+    try: async (): Promise<Session | undefined> => {
+      if (basebox === undefined) {
+        return undefined;
+      }
+
+      const sessionId = await sessionStore.get();
+
+      if (sessionId === null) {
+        return undefined;
+      }
+
+      const client = basebox.client({ sessionId });
+      const { error } = await client.auth.check();
+
+      if (error) {
+        await client.auth.logout();
+        return undefined;
+      }
+
+      const { data } = await client.user.profile();
+
+      if (
+        data === undefined ||
+        data.user === undefined ||
+        data.profile === undefined
+      ) {
+        return undefined;
+      }
+
+      return {
+        sessionId,
+        userId: data.profile.userId,
+        email: data.user.email,
+        name: Option.fromNullishOr(data.profile.name),
+      };
+    },
+    catch: () => undefined,
+  }).pipe(
+    Effect.catch(() => Effect.succeed(undefined)),
+    Effect.map(maybeSession =>
+      Message.LoadedSession({
+        maybeSession: Option.fromNullishOr(maybeSession),
+      }),
+    ),
+  ),
 });
 
 const syncHeadTag = (tag: FrameworkHeadTag): void => {
@@ -98,6 +150,18 @@ const SyncDocumentMetadata = Command.define('SyncDocumentMetadata', {
 
 // UPDATE
 
+const authRedirect = (model: Model) => {
+  if (model.route._tag === 'Todo' && Option.isNone(model.maybeSession)) {
+    return [NavigateTo({ route: AppRoute.Login() })];
+  }
+
+  if (model.route._tag === 'Login' && Option.isSome(model.maybeSession)) {
+    return [NavigateTo({ route: AppRoute.Todo() })];
+  }
+
+  return [];
+};
+
 type UpdateReturn = Update.Return<Model, Message>;
 
 export const update = (model: Model, message: Message) =>
@@ -125,12 +189,23 @@ export const update = (model: Model, message: Message) =>
             previous: pageMetadata(model.route),
             next: pageMetadata(nextModel.route),
           }),
+          ...authRedirect(nextModel),
         ],
       };
     },
     CompletedNavigateInternal: () => ({ model }),
     CompletedLoadExternal: () => ({ model }),
     CompletedSyncDocumentMetadata: () => ({ model }),
+    LoadedSession: ({ maybeSession }) => {
+      const nextModel = modifyFields(model, {
+        maybeSession: () => maybeSession,
+      });
+      const commands = authRedirect(nextModel);
+
+      return Array.isArrayEmpty(commands)
+        ? { model: nextModel }
+        : { model: nextModel, commands };
+    },
     SucceededGoogleLogin: ({ session }) => ({
       model: modifyFields(model, {
         maybeSession: () => Option.some(session),
@@ -138,9 +213,14 @@ export const update = (model: Model, message: Message) =>
       }),
       commands: [NavigateTo({ route: AppRoute.Todo() })],
     }),
-    FailedGoogleLogin: ({ reason }) => ({
-      model: modifyFields(model, {
+    FailedGoogleLogin: ({ reason }) => {
+      const nextModel = modifyFields(model, {
         maybeLoginError: () => Option.some(reason),
-      }),
-    }),
+      });
+      const commands = authRedirect(nextModel);
+
+      return Array.isArrayEmpty(commands)
+        ? { model: nextModel }
+        : { model: nextModel, commands };
+    },
   });

@@ -1,12 +1,7 @@
 import { Effect, Option, Queue, Stream } from 'effect';
 import { Mount } from 'foldkit';
 
-import {
-  OAuthCancelledError,
-  PopupBlockedError,
-  basebox,
-  sessionStore,
-} from '../../basebox';
+import { OAuthCancelledError, PopupBlockedError, basebox } from '../../basebox';
 import type { Session } from '../../domain/session';
 import { Message } from '../../message';
 
@@ -38,42 +33,6 @@ export const GoogleLogin = Mount.defineStream('GoogleLogin', {
         const emitFailure = (reason: string) => {
           Queue.offerUnsafe(queue, Message.FailedGoogleLogin({ reason }));
         };
-
-        const checkExistingSession = Effect.tryPromise({
-          try: async () => {
-            const sessionId = await sessionStore.get();
-
-            if (sessionId === null) {
-              return;
-            }
-
-            const client = bb.client({ sessionId });
-            const { error } = await client.auth.check();
-
-            if (error) {
-              await client.auth.logout();
-              return;
-            }
-
-            const { data } = await client.user.profile();
-
-            if (
-              data === undefined ||
-              data.user === undefined ||
-              data.profile === undefined
-            ) {
-              return;
-            }
-
-            emitSuccess({
-              sessionId,
-              userId: data.profile.userId,
-              email: data.user.email,
-              name: Option.fromNullishOr(data.profile.name),
-            });
-          },
-          catch: error => error,
-        }).pipe(Effect.catch(() => Effect.void));
 
         const handler = () => {
           bb.public()
@@ -113,8 +72,6 @@ export const GoogleLogin = Mount.defineStream('GoogleLogin', {
           handler =>
             Effect.sync(() => element.removeEventListener('click', handler)),
         );
-
-        yield* checkExistingSession;
 
         return yield* Effect.never;
       }),
