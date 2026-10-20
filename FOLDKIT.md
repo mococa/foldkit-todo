@@ -63,7 +63,7 @@ const update = (model: Model, message: Message) =>
     ClickedIncrement: () => ({
       model: modifyFields(model, { count: count => count + 1 }),
     }),
-  })
+  });
 ```
 
 Create an `UpdateReturn` alias when another matcher, helper, or exported signature reuses the type. The match generic constrains the whole update, so do not repeat the return annotation on the function.
@@ -147,8 +147,8 @@ Declare the whole Message union with `defineMessageUnion()`, then put `type Mess
 const Message = defineMessageUnion({
   ClickedSubmit: {},
   UpdatedEmail: { value: Schema.String },
-})
-type Message = typeof Message.Type
+});
+type Message = typeof Message.Type;
 ```
 
 Keep the `defineMessageUnion()` declaration and `type Message` alias adjacent. Construct values through the namespace (`Message.ClickedSubmit()`) and handle the union with `Message.match`. Never destructure constructors from `Message` or `OutMessage`; the owning namespace stays visible at every call site.

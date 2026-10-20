@@ -1,20 +1,20 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vite';
 
-import { foldkit } from '@foldkit/vite-plugin'
-import tailwindcss from '@tailwindcss/vite'
+import { foldkit } from '@foldkit/vite-plugin';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [
     tailwindcss(),
     foldkit({
       ssr: {
-        serverEntry: '/src/entry.server.ts',
-        clientEntry: '/src/entry.ts',
+        serverEntry: '/src/entry/server.ts',
+        clientEntry: '/src/entry/client.ts',
         build: { prerender: true },
       },
     }),
   ],
   optimizeDeps: {
-    entries: ['src/entry.ts'],
+    entries: ['src/entry/client.ts'],
   },
-})
+});

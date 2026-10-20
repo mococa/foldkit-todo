@@ -1,21 +1,23 @@
-import { Schema, pipe } from 'effect'
-import { Route } from 'foldkit'
-import { defineRouteUnion, literal } from 'foldkit/route'
+import { Schema, pipe } from "effect";
+import { Route } from "foldkit";
+import { defineRouteUnion, literal } from "foldkit/route";
 
 export const AppRoute = defineRouteUnion({
-  Home: {},
-  About: {},
-  NotFound: { path: Schema.String },
-})
+    Login: {},
+    NotFound: { path: Schema.String },
+});
 
-export type AppRoute = typeof AppRoute.Type
+export type AppRoute = typeof AppRoute.Type;
 
-export const homeRouter = pipe(Route.root, Route.mapTo(AppRoute.Home))
-export const aboutRouter = pipe(literal('about'), Route.mapTo(AppRoute.About))
+const definitions = [["login", AppRoute.Login]] as const;
 
-const routeParser = Route.oneOf(aboutRouter, homeRouter)
+const routes = definitions.map(([path, route]) =>
+    pipe(literal(path), Route.mapTo(route)),
+);
+
+const parser = Route.oneOf(...routes);
 
 export const urlToAppRoute = Route.parseUrlWithFallback(
-  routeParser,
-  AppRoute.NotFound,
-)
+    parser,
+    AppRoute.NotFound,
+);
