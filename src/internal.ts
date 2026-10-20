@@ -1,9 +1,8 @@
-import { Effect, Schema } from 'effect';
+import { Effect, Option, Schema } from 'effect';
 import { Command, type Update } from 'foldkit';
-import { defineMessageUnion } from 'foldkit/message';
 import { UrlRequest, load, pushUrl } from 'foldkit/navigation';
 import { modifyFields } from 'foldkit/struct';
-import { Url, toString as urlToString } from 'foldkit/url';
+import { toString as urlToString } from 'foldkit/url';
 
 import { type FrameworkHeadTag, FrameworkMetadata } from './lib/router';
 import type { Model } from './main';
@@ -11,15 +10,9 @@ import { AppRoute, headTags, href, pageMetadata, urlToAppRoute } from './route';
 
 // MESSAGE
 
-export const Message = defineMessageUnion({
-  ClickedLink: { request: UrlRequest },
-  ChangedUrl: { url: Url },
-  CompletedNavigateInternal: {},
-  CompletedLoadExternal: {},
-  CompletedSyncDocumentMetadata: {},
-});
+export { Message } from './message';
 
-export type Message = typeof Message.Type;
+import { Message } from './message';
 
 // COMMAND
 
@@ -138,4 +131,16 @@ export const update = (model: Model, message: Message) =>
     CompletedNavigateInternal: () => ({ model }),
     CompletedLoadExternal: () => ({ model }),
     CompletedSyncDocumentMetadata: () => ({ model }),
+    SucceededGoogleLogin: ({ session }) => ({
+      model: modifyFields(model, {
+        maybeSession: () => Option.some(session),
+        maybeLoginError: () => Option.none(),
+      }),
+      commands: [NavigateTo({ route: AppRoute.Todo() })],
+    }),
+    FailedGoogleLogin: ({ reason }) => ({
+      model: modifyFields(model, {
+        maybeLoginError: () => Option.some(reason),
+      }),
+    }),
   });

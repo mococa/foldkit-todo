@@ -1,7 +1,8 @@
-import { Schema } from 'effect';
+import { Option, Schema } from 'effect';
 import { Runtime } from 'foldkit';
 import { type Document, type HtmlBuilder } from 'foldkit/html';
 
+import { Session } from './domain/session';
 import type { Message } from './internal';
 import { AppRoute, pageMetadata, urlToAppRoute, viewForRoute } from './route';
 
@@ -11,6 +12,8 @@ export { Message, update } from './internal';
 
 export const Model = Schema.Struct({
   route: AppRoute,
+  maybeSession: Schema.Option(Session),
+  maybeLoginError: Schema.Option(Schema.String),
 });
 
 export type Model = typeof Model.Type;
@@ -18,7 +21,11 @@ export type Model = typeof Model.Type;
 // INIT
 
 export const init: Runtime.RoutingApplicationInit<Model, Message> = url => ({
-  model: { route: urlToAppRoute(url) },
+  model: {
+    route: urlToAppRoute(url),
+    maybeSession: Option.none(),
+    maybeLoginError: Option.none(),
+  },
 });
 
 // VIEW

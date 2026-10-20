@@ -2,6 +2,7 @@ import type { HtmlBuilder } from 'foldkit/html';
 
 import { definePage } from '../../lib/router';
 import { SITE_NAME } from '../../site';
+import { GoogleLogin } from './google';
 
 export const LoginPage = definePage({
   tag: 'Login',
@@ -69,6 +70,8 @@ function leftPanel<Message>(h: HtmlBuilder<Message>) {
 
           h.button(
             [
+              // oxlint-disable-next-line typescript/consistent-type-assertions
+              h.OnMount(GoogleLogin() as never),
               h.Class(
                 'relative inline-flex h-11 w-full items-center justify-center rounded-md border border-[#dadce0] bg-white px-3 text-sm font-medium text-[#1f1f1f] transition-colors hover:bg-[#f8f9fa]',
               ),
