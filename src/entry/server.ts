@@ -21,7 +21,7 @@ export const renderDocument: Server.DocumentRenderer = (
   });
 };
 
-export const prerenderPaths: ReadonlyArray<string> = ['/', '/login'];
+export const prerenderPaths: ReadonlyArray<string> = ['/', '/login', '/todo'];
 
 export const renderPage = (request: Request): Promise<Server.EntryResult> =>
   Effect.runPromise(
