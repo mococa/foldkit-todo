@@ -2,7 +2,7 @@ import type { HtmlBuilder } from 'foldkit/html';
 
 import { definePage } from '../../lib/router';
 import { SITE_NAME } from '../../site';
-import { GoogleLogin } from './google';
+import { GoogleLogin } from './mounts/google';
 
 export const LoginPage = definePage({
   tag: 'Login',

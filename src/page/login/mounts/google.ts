@@ -1,9 +1,13 @@
 import { Effect, Option, Queue, Stream } from 'effect';
 import { Mount } from 'foldkit';
 
-import { OAuthCancelledError, PopupBlockedError, basebox } from '../../basebox';
-import type { Session } from '../../domain/session';
-import { Message } from '../../message';
+import {
+  OAuthCancelledError,
+  PopupBlockedError,
+  basebox,
+} from '../../../basebox';
+import type { Session } from '../../../domain/session';
+import { Message } from '../../../message';
 
 type GoogleLoginMessage =
   | typeof Message.SucceededGoogleLogin.Type
