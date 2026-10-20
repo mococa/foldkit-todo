@@ -1,9 +1,9 @@
 import type { HtmlBuilder } from 'foldkit/html';
 
 import { SITE_NAME } from '../metadata';
-import { type PageModel, createPage } from '../page';
+import { type PageModel, definePage } from '../page';
 
-export const LoginPage = createPage({
+export const LoginPage = definePage({
   tag: 'Login',
   path: 'login',
   metadata: {
