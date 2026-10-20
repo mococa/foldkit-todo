@@ -1,6 +1,7 @@
 import { defineRouter } from './lib/router';
 import { LoginPage } from './page/login';
 import { NotFoundPage } from './page/not-found';
+import { TodoPage } from './page/todo';
 import { SITE_NAME } from './site';
 
 export const routes = defineRouter(
@@ -11,7 +12,7 @@ export const routes = defineRouter(
       description: 'A Foldkit drawing studio built with Effect.',
     },
   },
-  [LoginPage, NotFoundPage],
+  [LoginPage, TodoPage, NotFoundPage],
 );
 
 export const AppRoute = routes.AppRoute;
