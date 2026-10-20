@@ -3,6 +3,7 @@ import { Runtime } from 'foldkit';
 import { type Document, type HtmlBuilder } from 'foldkit/html';
 
 import { Session } from './domain/session';
+import { Todo } from './domain/todo';
 import { CheckSession, type Message } from './internal';
 import { AppRoute, pageMetadata, urlToAppRoute, viewForRoute } from './route';
 
@@ -14,6 +15,8 @@ export const Model = Schema.Struct({
   route: AppRoute,
   maybeSession: Schema.Option(Session),
   maybeLoginError: Schema.Option(Schema.String),
+  todos: Schema.Array(Todo),
+  todoDraft: Schema.String,
 });
 
 export type Model = typeof Model.Type;
@@ -26,6 +29,8 @@ export const init: Runtime.RoutingApplicationInit<Model, Message> = url => ({
     route: urlToAppRoute(url),
     maybeSession: Option.none(),
     maybeLoginError: Option.none(),
+    todos: [],
+    todoDraft: '',
   },
 });
 
@@ -42,7 +47,7 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => {
     ...(metadata.ogUrl === undefined ? {} : { ogUrl: metadata.ogUrl }),
     body: h.main(
       [h.Class('flex min-h-screen flex-col')],
-      [viewForRoute(model.route, h)],
+      [viewForRoute(model.route, h, model)],
     ),
   };
 };

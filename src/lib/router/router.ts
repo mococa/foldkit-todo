@@ -170,6 +170,7 @@ export type RouterSitemapConfig = Readonly<{
 type PageFields<
   Tag extends string,
   Fields extends Schema.Struct.Fields,
+  Inputs,
 > = Readonly<{
   tag: Tag;
   metadata: FrameworkMetadataOverrides;
@@ -177,6 +178,7 @@ type PageFields<
   view: <Message>(
     model: FrameworkPageModel<RouteValue<Tag, Fields>>,
     h: HtmlBuilder<Message>,
+    inputs: Inputs,
   ) => Html;
 }>;
 
@@ -205,7 +207,8 @@ export type PageDefinition<
   Tag extends string = string,
   Fields extends Schema.Struct.Fields = {},
   Path extends string | undefined = string | undefined,
-> = PageFields<Tag, Fields> &
+  Inputs = unknown,
+> = PageFields<Tag, Fields, Inputs> &
   Readonly<{ path: Path }> &
   RouteInput<Fields> &
   CreateRouterInput<Tag, Fields, Path>;
@@ -215,9 +218,10 @@ export const definePage = <
   const Tag extends string,
   const Fields extends Schema.Struct.Fields = {},
   const Path extends string | undefined = string | undefined,
+  Inputs = unknown,
 >(
-  page: PageDefinition<Tag, Fields, Path>,
-): PageDefinition<Tag, Fields, Path> => page;
+  page: PageDefinition<Tag, Fields, Path, Inputs>,
+): PageDefinition<Tag, Fields, Path, Inputs> => page;
 
 type AnyPage = Readonly<{
   tag: string;
@@ -744,6 +748,7 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
   const viewForRoute = <Message>(
     route: AppRoute,
     h: HtmlBuilder<Message>,
+    inputs: unknown,
   ): Html => {
     const page = pageForRoute(route);
 
@@ -751,9 +756,10 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
     const view = page.view as unknown as (
       model: FrameworkPageModel<AppRoute>,
       h: HtmlBuilder<Message>,
+      inputs: unknown,
     ) => Html;
 
-    return view({ route }, h);
+    return view({ route }, h, inputs);
   };
 
   const href = (route: AppRoute): string => {

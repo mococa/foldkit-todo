@@ -89,5 +89,5 @@ export const update = (model: Model, message: Message) =>
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title: routes.pageMetadata(model.route).title,
-  body: h.main([h.Class('p-4')], [routes.viewForRoute(model.route, h)]),
+  body: h.main([h.Class('p-4')], [routes.viewForRoute(model.route, h, model)]),
 });

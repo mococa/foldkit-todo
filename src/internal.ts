@@ -6,6 +6,7 @@ import { toString as urlToString } from 'foldkit/url';
 
 import { basebox, sessionStore } from './basebox';
 import type { Session } from './domain/session';
+import { Todo, parseTodos, serializeTodos } from './domain/todo';
 import { type FrameworkHeadTag, FrameworkMetadata } from './lib/router';
 import type { Model } from './main';
 import { AppRoute, headTags, href, pageMetadata, urlToAppRoute } from './route';
@@ -117,6 +118,46 @@ export const Logout = Command.define('Logout', {
   ),
 });
 
+const todosKey = (userId: string) => `foldkit-todo:${userId}`;
+
+const CreateTodo = Command.define('CreateTodo', {
+  args: { title: Schema.String },
+  messages: [Message.CreatedTodo],
+  execute: ({ title }) =>
+    Effect.sync(() =>
+      Message.CreatedTodo({ id: globalThis.crypto.randomUUID(), title }),
+    ),
+});
+
+const LoadTodos = Command.define('LoadTodos', {
+  args: { userId: Schema.String },
+  messages: [Message.LoadedTodos],
+  execute: ({ userId }) =>
+    Effect.sync(() => {
+      const raw = globalThis.localStorage.getItem(todosKey(userId));
+
+      if (raw === null) {
+        return Message.LoadedTodos({ todos: [] });
+      }
+
+      try {
+        return Message.LoadedTodos({ todos: parseTodos(raw) });
+      } catch {
+        return Message.LoadedTodos({ todos: [] });
+      }
+    }),
+});
+
+const PersistTodos = Command.define('PersistTodos', {
+  args: { userId: Schema.String, todos: Schema.Array(Todo) },
+  messages: [Message.CompletedPersistTodos],
+  execute: ({ userId, todos }) =>
+    Effect.sync(() => {
+      globalThis.localStorage.setItem(todosKey(userId), serializeTodos(todos));
+      return Message.CompletedPersistTodos();
+    }),
+});
+
 const syncHeadTag = (tag: FrameworkHeadTag): void => {
   const { document } = globalThis;
   const selector = `meta[${tag.attribute}="${tag.key}"]`;
@@ -177,6 +218,14 @@ const SyncDocumentMetadata = Command.define('SyncDocumentMetadata', {
 
 // UPDATE
 
+const persistTodos = (model: Model) =>
+  Option.match(model.maybeSession, {
+    onNone: () => [],
+    onSome: session => [
+      PersistTodos({ userId: session.userId, todos: model.todos }),
+    ],
+  });
+
 const authRedirect = (model: Model) => {
   if (model.route._tag === 'Todo' && Option.isNone(model.maybeSession)) {
     return [NavigateTo({ route: AppRoute.Login() })];
@@ -227,7 +276,13 @@ export const update = (model: Model, message: Message) =>
       const nextModel = modifyFields(model, {
         maybeSession: () => maybeSession,
       });
-      const commands = authRedirect(nextModel);
+      const commands = [
+        ...Option.match(maybeSession, {
+          onNone: () => [],
+          onSome: session => [LoadTodos({ userId: session.userId })],
+        }),
+        ...authRedirect(nextModel),
+      ];
 
       return Array.isArrayEmpty(commands)
         ? { model: nextModel }
@@ -238,16 +293,71 @@ export const update = (model: Model, message: Message) =>
         maybeSession: () => Option.some(session),
         maybeLoginError: () => Option.none(),
       }),
-      commands: [NavigateTo({ route: AppRoute.Todo() })],
+      commands: [
+        LoadTodos({ userId: session.userId }),
+        NavigateTo({ route: AppRoute.Todo() }),
+      ],
     }),
     ClickedLogout: () => ({ model, commands: [Logout()] }),
     CompletedLogout: ({ maybeError }) => ({
       model: modifyFields(model, {
         maybeSession: () => Option.none(),
         maybeLoginError: () => maybeError,
+        todos: () => [],
+        todoDraft: () => '',
       }),
       commands: [NavigateTo({ route: AppRoute.Login() })],
     }),
+    ChangedTodoDraft: ({ value }) => ({
+      model: modifyFields(model, { todoDraft: () => value }),
+    }),
+    SubmittedTodo: () => {
+      const title = model.todoDraft.trim();
+
+      if (title === '') {
+        return { model };
+      }
+
+      return { model, commands: [CreateTodo({ title })] };
+    },
+    CreatedTodo: ({ id, title }) => {
+      const nextModel = modifyFields(model, {
+        todos: () => [...model.todos, { id, title, completed: false }],
+        todoDraft: () => '',
+      });
+      const commands = persistTodos(nextModel);
+
+      return Array.isArrayEmpty(commands)
+        ? { model: nextModel }
+        : { model: nextModel, commands };
+    },
+    ToggledTodo: ({ id }) => {
+      const nextModel = modifyFields(model, {
+        todos: () =>
+          Array.map(model.todos, todo =>
+            todo.id === id ? { ...todo, completed: !todo.completed } : todo,
+          ),
+      });
+      const commands = persistTodos(nextModel);
+
+      return Array.isArrayEmpty(commands)
+        ? { model: nextModel }
+        : { model: nextModel, commands };
+    },
+    DeletedTodo: ({ id }) => {
+      const nextModel = modifyFields(model, {
+        todos: () => Array.filter(model.todos, todo => todo.id !== id),
+      });
+      const commands = persistTodos(nextModel);
+
+      return Array.isArrayEmpty(commands)
+        ? { model: nextModel }
+        : { model: nextModel, commands };
+    },
+    LoadedTodos: ({ todos }) => ({
+      model: modifyFields(model, { todos: () => todos }),
+    }),
+    CompletedPersistTodos: () => ({ model }),
     FailedGoogleLogin: ({ reason }) => {
       const nextModel = modifyFields(model, {
         maybeLoginError: () => Option.some(reason),
