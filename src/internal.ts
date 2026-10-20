@@ -1,14 +1,22 @@
 import { Array, Effect, Option, Schema } from 'effect';
-import { Command, type Update } from 'foldkit';
+import { Command, Update } from 'foldkit';
 import { UrlRequest, load, pushUrl } from 'foldkit/navigation';
 import { modifyFields } from 'foldkit/struct';
 import { toString as urlToString } from 'foldkit/url';
 
 import { basebox, sessionStore } from './basebox';
 import type { Session } from './domain/session';
-import { Todo, parseTodos, serializeTodos } from './domain/todo';
 import { type FrameworkHeadTag, FrameworkMetadata } from './lib/router';
-import type { Model } from './main';
+import type { Model } from './model';
+import {
+  Message as TodoMessage,
+  OutMessage as TodoOutMessage,
+} from './page/todo/logic/message';
+import type { Model as TodoModel } from './page/todo/logic/model';
+import {
+  setUser as setTodoUser,
+  update as todoUpdate,
+} from './page/todo/logic/update';
 import { AppRoute, headTags, href, pageMetadata, urlToAppRoute } from './route';
 
 // MESSAGE
@@ -118,46 +126,6 @@ export const Logout = Command.define('Logout', {
   ),
 });
 
-const todosKey = (userId: string) => `foldkit-todo:${userId}`;
-
-const CreateTodo = Command.define('CreateTodo', {
-  args: { title: Schema.String },
-  messages: [Message.CreatedTodo],
-  execute: ({ title }) =>
-    Effect.sync(() =>
-      Message.CreatedTodo({ id: globalThis.crypto.randomUUID(), title }),
-    ),
-});
-
-const LoadTodos = Command.define('LoadTodos', {
-  args: { userId: Schema.String },
-  messages: [Message.LoadedTodos],
-  execute: ({ userId }) =>
-    Effect.sync(() => {
-      const raw = globalThis.localStorage.getItem(todosKey(userId));
-
-      if (raw === null) {
-        return Message.LoadedTodos({ todos: [] });
-      }
-
-      try {
-        return Message.LoadedTodos({ todos: parseTodos(raw) });
-      } catch {
-        return Message.LoadedTodos({ todos: [] });
-      }
-    }),
-});
-
-const PersistTodos = Command.define('PersistTodos', {
-  args: { userId: Schema.String, todos: Schema.Array(Todo) },
-  messages: [Message.CompletedPersistTodos],
-  execute: ({ userId, todos }) =>
-    Effect.sync(() => {
-      globalThis.localStorage.setItem(todosKey(userId), serializeTodos(todos));
-      return Message.CompletedPersistTodos();
-    }),
-});
-
 const syncHeadTag = (tag: FrameworkHeadTag): void => {
   const { document } = globalThis;
   const selector = `meta[${tag.attribute}="${tag.key}"]`;
@@ -218,14 +186,6 @@ const SyncDocumentMetadata = Command.define('SyncDocumentMetadata', {
 
 // UPDATE
 
-const persistTodos = (model: Model) =>
-  Option.match(model.maybeSession, {
-    onNone: () => [],
-    onSome: session => [
-      PersistTodos({ userId: session.userId, todos: model.todos }),
-    ],
-  });
-
 const authRedirect = (model: Model) => {
   if (model.route._tag === 'Todo' && Option.isNone(model.maybeSession)) {
     return [NavigateTo({ route: AppRoute.Login() })];
@@ -239,6 +199,46 @@ const authRedirect = (model: Model) => {
 };
 
 type UpdateReturn = Update.Return<Model, Message>;
+
+const withTodoUser = (
+  model: Model,
+  maybeSession: Option.Option<Session>,
+): Update.Return<Model, Message> => {
+  const todo = setTodoUser(
+    model.todo,
+    Option.map(maybeSession, session => session.userId),
+  );
+  const nextModel = modifyFields(model, {
+    maybeSession: () => maybeSession,
+    todo: () => todo.model,
+  });
+  const commands = [
+    ...Command.mapMessages<TodoMessage, Message>(todo.commands ?? [], message =>
+      Message.GotTodoMessage({ message }),
+    ),
+    ...authRedirect(nextModel),
+  ];
+
+  return Array.isArrayEmpty(commands)
+    ? { model: nextModel }
+    : { model: nextModel, commands };
+};
+
+const foldTodoOutMessage = TodoOutMessage.match({
+  ClickedLogout: () => (model: Model) => ({
+    model,
+    commands: [Logout()],
+  }),
+});
+
+const foldTodo = Update.foldChild({
+  update: todoUpdate,
+  read: (model: Model) => Option.some(model.todo),
+  write: (model: Model, nextTodo: TodoModel) =>
+    modifyFields(model, { todo: () => nextTodo }),
+  toParentMessage: message => Message.GotTodoMessage({ message }),
+  foldOutMessage: foldTodoOutMessage,
+});
 
 export const update = (model: Model, message: Message) =>
   Message.match<UpdateReturn>(message, {
@@ -272,92 +272,45 @@ export const update = (model: Model, message: Message) =>
     CompletedNavigateInternal: () => ({ model }),
     CompletedLoadExternal: () => ({ model }),
     CompletedSyncDocumentMetadata: () => ({ model }),
-    LoadedSession: ({ maybeSession }) => {
+    LoadedSession: ({ maybeSession }) => withTodoUser(model, maybeSession),
+    SucceededGoogleLogin: ({ session }) => {
+      const todo = setTodoUser(model.todo, Option.some(session.userId));
       const nextModel = modifyFields(model, {
-        maybeSession: () => maybeSession,
-      });
-      const commands = [
-        ...Option.match(maybeSession, {
-          onNone: () => [],
-          onSome: session => [LoadTodos({ userId: session.userId })],
-        }),
-        ...authRedirect(nextModel),
-      ];
-
-      return Array.isArrayEmpty(commands)
-        ? { model: nextModel }
-        : { model: nextModel, commands };
-    },
-    SucceededGoogleLogin: ({ session }) => ({
-      model: modifyFields(model, {
         maybeSession: () => Option.some(session),
         maybeLoginError: () => Option.none(),
-      }),
-      commands: [
-        LoadTodos({ userId: session.userId }),
-        NavigateTo({ route: AppRoute.Todo() }),
-      ],
-    }),
-    ClickedLogout: () => ({ model, commands: [Logout()] }),
-    CompletedLogout: ({ maybeError }) => ({
-      model: modifyFields(model, {
+        todo: () => todo.model,
+      });
+
+      return {
+        model: nextModel,
+        commands: [
+          ...Command.mapMessages<TodoMessage, Message>(
+            todo.commands ?? [],
+            message => Message.GotTodoMessage({ message }),
+          ),
+          NavigateTo({ route: AppRoute.Todo() }),
+        ],
+      };
+    },
+    CompletedLogout: ({ maybeError }) => {
+      const todo = setTodoUser(model.todo, Option.none());
+      const nextModel = modifyFields(model, {
         maybeSession: () => Option.none(),
         maybeLoginError: () => maybeError,
-        todos: () => [],
-        todoDraft: () => '',
-      }),
-      commands: [NavigateTo({ route: AppRoute.Login() })],
-    }),
-    ChangedTodoDraft: ({ value }) => ({
-      model: modifyFields(model, { todoDraft: () => value }),
-    }),
-    SubmittedTodo: () => {
-      const title = model.todoDraft.trim();
-
-      if (title === '') {
-        return { model };
-      }
-
-      return { model, commands: [CreateTodo({ title })] };
-    },
-    CreatedTodo: ({ id, title }) => {
-      const nextModel = modifyFields(model, {
-        todos: () => [...model.todos, { id, title, completed: false }],
-        todoDraft: () => '',
+        todo: () => todo.model,
       });
-      const commands = persistTodos(nextModel);
 
-      return Array.isArrayEmpty(commands)
-        ? { model: nextModel }
-        : { model: nextModel, commands };
-    },
-    ToggledTodo: ({ id }) => {
-      const nextModel = modifyFields(model, {
-        todos: () =>
-          Array.map(model.todos, todo =>
-            todo.id === id ? { ...todo, completed: !todo.completed } : todo,
+      return {
+        model: nextModel,
+        commands: [
+          ...Command.mapMessages<TodoMessage, Message>(
+            todo.commands ?? [],
+            message => Message.GotTodoMessage({ message }),
           ),
-      });
-      const commands = persistTodos(nextModel);
-
-      return Array.isArrayEmpty(commands)
-        ? { model: nextModel }
-        : { model: nextModel, commands };
+          NavigateTo({ route: AppRoute.Login() }),
+        ],
+      };
     },
-    DeletedTodo: ({ id }) => {
-      const nextModel = modifyFields(model, {
-        todos: () => Array.filter(model.todos, todo => todo.id !== id),
-      });
-      const commands = persistTodos(nextModel);
-
-      return Array.isArrayEmpty(commands)
-        ? { model: nextModel }
-        : { model: nextModel, commands };
-    },
-    LoadedTodos: ({ todos }) => ({
-      model: modifyFields(model, { todos: () => todos }),
-    }),
-    CompletedPersistTodos: () => ({ model }),
     FailedGoogleLogin: ({ reason }) => {
       const nextModel = modifyFields(model, {
         maybeLoginError: () => Option.some(reason),
@@ -368,4 +321,5 @@ export const update = (model: Model, message: Message) =>
         ? { model: nextModel }
         : { model: nextModel, commands };
     },
+    GotTodoMessage: ({ message: todoMessage }) => foldTodo(model, todoMessage),
   });

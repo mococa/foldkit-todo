@@ -1,25 +1,17 @@
-import { Option, Schema } from 'effect';
+import { Option } from 'effect';
 import { Runtime } from 'foldkit';
 import { type Document, type HtmlBuilder } from 'foldkit/html';
 
-import { Session } from './domain/session';
-import { Todo } from './domain/todo';
 import { CheckSession, type Message } from './internal';
-import { AppRoute, pageMetadata, urlToAppRoute, viewForRoute } from './route';
+import { Model } from './model';
+import { init as initTodo } from './page/todo/logic';
+import { pageMetadata, urlToAppRoute, viewForRoute } from './route';
 
 export { Message, update } from './internal';
 
 // MODEL
 
-export const Model = Schema.Struct({
-  route: AppRoute,
-  maybeSession: Schema.Option(Session),
-  maybeLoginError: Schema.Option(Schema.String),
-  todos: Schema.Array(Todo),
-  todoDraft: Schema.String,
-});
-
-export type Model = typeof Model.Type;
+export { Model } from './model';
 
 // INIT
 
@@ -29,8 +21,7 @@ export const init: Runtime.RoutingApplicationInit<Model, Message> = url => ({
     route: urlToAppRoute(url),
     maybeSession: Option.none(),
     maybeLoginError: Option.none(),
-    todos: [],
-    todoDraft: '',
+    todo: initTodo,
   },
 });
 

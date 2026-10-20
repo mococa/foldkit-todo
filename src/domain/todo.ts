@@ -17,3 +17,21 @@ export const parseTodos = (raw: string): ReadonlyArray<Todo> =>
 
 export const serializeTodos = (todos: ReadonlyArray<Todo>): string =>
   Schema.encodeSync(TodoListJson)(todos);
+
+export const addTodo = (
+  todos: ReadonlyArray<Todo>,
+  todo: Todo,
+): ReadonlyArray<Todo> => [...todos, todo];
+
+export const toggleTodo = (
+  todos: ReadonlyArray<Todo>,
+  id: string,
+): ReadonlyArray<Todo> =>
+  todos.map(todo =>
+    todo.id === id ? { ...todo, completed: !todo.completed } : todo,
+  );
+
+export const removeTodo = (
+  todos: ReadonlyArray<Todo>,
+  id: string,
+): ReadonlyArray<Todo> => todos.filter(todo => todo.id !== id);
