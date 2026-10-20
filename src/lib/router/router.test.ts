@@ -4,7 +4,7 @@ import { literal, query } from 'foldkit/route';
 import { fromString as urlFromString } from 'foldkit/url';
 import { describe, expect, expectTypeOf, test } from 'vitest';
 
-import { HomePage, NotFoundPage, routes } from './fixture';
+import { HomePage, NotFoundPage, UserPage, routes } from './fixture';
 import {
   DuplicateRouteTag,
   MissingFallbackRoute,
@@ -46,6 +46,29 @@ const SearchPage: PageDefinition<
     ),
   metadata: { title: 'Search' },
   view: (model, h) => h.p([], [`Search ${model.route.q}`]),
+};
+
+const AboutPage: PageDefinition<'About', {}, 'about'> = {
+  tag: 'About',
+  path: 'about',
+  metadata: { title: 'About' },
+  sitemap: { priority: 0.5, changeFrequency: 'monthly' },
+  view: (_model, h) => h.empty,
+};
+
+const PrivatePage: PageDefinition<'Private', {}, 'private'> = {
+  tag: 'Private',
+  path: 'private',
+  metadata: { title: 'Private', noIndex: true },
+  view: (_model, h) => h.empty,
+};
+
+const HiddenPage: PageDefinition<'Hidden', {}, 'hidden'> = {
+  tag: 'Hidden',
+  path: 'hidden',
+  metadata: { title: 'Hidden' },
+  sitemap: false,
+  view: (_model, h) => h.empty,
 };
 
 const RichPage: PageDefinition<'Rich', {}, 'rich'> = {
@@ -313,6 +336,86 @@ describe('metadata', () => {
         .tag,
     ).toBe('File');
     expect(routes.metadataForTitle('User')?.title).toBe('User');
+  });
+});
+
+describe('sitemap', () => {
+  const sitemapRoutes = defineRouter(
+    {
+      siteName: 'Site',
+      fallbackTag: 'NotFound',
+      sitemap: {
+        origin: 'https://example.com/',
+        entries: [
+          {
+            path: '/users/1',
+            lastModified: '2026-01-01',
+            priority: 0.8,
+            changeFrequency: 'weekly',
+            images: ['/user.png?x=1&y=2'],
+          },
+          { path: '/home', priority: 0.9 },
+        ],
+      },
+    },
+    [HomePage, AboutPage, PrivatePage, HiddenPage, UserPage, NotFoundPage],
+  );
+
+  test('includes literal pages by default and excludes the rest', () => {
+    const paths = sitemapRoutes.sitemapEntries?.map(entry => entry.path);
+
+    expect(paths).toContain('/home');
+    expect(paths).toContain('/about');
+    expect(paths).toContain('/users/1');
+    expect(paths).not.toContain('/private');
+    expect(paths).not.toContain('/hidden');
+    expect(paths).not.toContain('/not-found');
+  });
+
+  test('applies page defaults and explicit overrides', () => {
+    const entries = sitemapRoutes.sitemapEntries ?? [];
+    const home = entries.find(entry => entry.path === '/home');
+    const about = entries.find(entry => entry.path === '/about');
+    const user = entries.find(entry => entry.path === '/users/1');
+
+    expect(home?.priority).toBe(0.9);
+    expect(about).toMatchObject({
+      priority: 0.5,
+      changeFrequency: 'monthly',
+    });
+    expect(user).toMatchObject({
+      path: '/users/1',
+      lastModified: '2026-01-01',
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    });
+  });
+
+  test('renders XML with absolute URLs, images, and escaping', () => {
+    const xml = sitemapRoutes.sitemap;
+
+    expect(xml).toContain('<loc>https://example.com/home</loc>');
+    expect(xml).toContain('<lastmod>2026-01-01</lastmod>');
+    expect(xml).toContain('<changefreq>weekly</changefreq>');
+    expect(xml).toContain('<priority>0.8</priority>');
+    expect(xml).toContain(
+      'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"',
+    );
+    expect(xml).toContain(
+      '<image:loc>https://example.com/user.png?x=1&amp;y=2</image:loc>',
+    );
+  });
+
+  test('renders robots.txt', () => {
+    expect(sitemapRoutes.robotsTxt).toBe(
+      'Sitemap: https://example.com/sitemap.xml\n',
+    );
+  });
+
+  test('stays disabled without sitemap config', () => {
+    expect(routes.sitemapEntries).toBeUndefined();
+    expect(routes.sitemap).toBeUndefined();
+    expect(routes.robotsTxt).toBeUndefined();
   });
 });
 

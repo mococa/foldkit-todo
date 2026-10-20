@@ -3,7 +3,7 @@ import { Runtime } from 'foldkit';
 import { type Document, type Html, type HtmlBuilder } from 'foldkit/html';
 
 import type { Message } from './internal';
-import { pageForRoute, pageMetadata } from './page';
+import { pageForRoute, pageMetadata } from './page/registry';
 import { AppRoute, urlToAppRoute } from './route';
 
 export { Message, update } from './internal';

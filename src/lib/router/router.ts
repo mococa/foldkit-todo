@@ -133,12 +133,44 @@ type CanAutoRouter<
       : false
   : false;
 
+export type SitemapChangeFrequency =
+  | 'always'
+  | 'hourly'
+  | 'daily'
+  | 'weekly'
+  | 'monthly'
+  | 'yearly'
+  | 'never';
+
+/** Per-page sitemap policy. `false` excludes the page. */
+export type PageSitemap = Readonly<{
+  priority?: number;
+  changeFrequency?: SitemapChangeFrequency;
+  images?: ReadonlyArray<string>;
+}>;
+
+/** A concrete sitemap URL, usually used for parameterized routes. */
+export type SitemapEntry = Readonly<{
+  path: string;
+  lastModified?: string;
+  priority?: number;
+  changeFrequency?: SitemapChangeFrequency;
+  images?: ReadonlyArray<string>;
+}>;
+
+/** Sitemap generation settings. Literal pages are included by default. */
+export type RouterSitemapConfig = Readonly<{
+  origin: string;
+  entries?: ReadonlyArray<SitemapEntry>;
+}>;
+
 type PageFields<
   Tag extends string,
   Fields extends Schema.Struct.Fields,
 > = Readonly<{
   tag: Tag;
   metadata: FrameworkMetadataOverrides;
+  sitemap?: false | PageSitemap;
   view: <Message>(
     model: FrameworkPageModel<RouteValue<Tag, Fields>>,
     h: HtmlBuilder<Message>,
@@ -189,6 +221,7 @@ type AnyPage = Readonly<{
   path: string | undefined;
   route?: Schema.Struct.Fields;
   metadata: FrameworkMetadataOverrides;
+  sitemap?: false | PageSitemap;
   view: unknown;
   createRouter?: unknown;
 }>;
@@ -467,11 +500,86 @@ const renderHeadTags = (
 };
 
 /** Router-wide defaults: site name, fallback page, metadata, head tags. */
+const normalizePath = (path: string): string => {
+  if (path === '' || path === '/') {
+    return '/';
+  }
+
+  return path.startsWith('/') ? path : `/${path}`;
+};
+
+const absoluteUrl = (origin: string, path: string): string => {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+
+  const base = origin.endsWith('/') ? origin.slice(0, -1) : origin;
+
+  return `${base}${normalizePath(path)}`;
+};
+
+const escapeXml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+
+const renderSitemapEntry = (origin: string, entry: SitemapEntry): string => {
+  const lines = [
+    '  <url>',
+    `    <loc>${escapeXml(absoluteUrl(origin, entry.path))}</loc>`,
+  ];
+
+  if (entry.lastModified !== undefined) {
+    lines.push(`    <lastmod>${escapeXml(entry.lastModified)}</lastmod>`);
+  }
+
+  if (entry.changeFrequency !== undefined) {
+    lines.push(`    <changefreq>${entry.changeFrequency}</changefreq>`);
+  }
+
+  if (entry.priority !== undefined) {
+    lines.push(`    <priority>${entry.priority}</priority>`);
+  }
+
+  entry.images?.forEach(image => {
+    lines.push(
+      `    <image:image><image:loc>${escapeXml(absoluteUrl(origin, image))}</image:loc></image:image>`,
+    );
+  });
+
+  lines.push('  </url>');
+
+  return lines.join('\n');
+};
+
+const renderSitemap = (
+  origin: string,
+  entries: ReadonlyArray<SitemapEntry>,
+): string => {
+  const hasImages = entries.some(
+    entry => entry.images !== undefined && entry.images.length > 0,
+  );
+  const urlset = hasImages
+    ? '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
+    : '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    urlset,
+    ...entries.map(entry => renderSitemapEntry(origin, entry)),
+    '</urlset>',
+  ].join('\n');
+};
+
 export type RouterFrameworkConfig = Readonly<{
   siteName: string;
   fallbackTag: string;
   defaultMetadata?: FrameworkMetadataOverrides;
   headTags?: HeadTagFactory | undefined;
+  sitemap?: RouterSitemapConfig | undefined;
 }>;
 
 /** Builds typed routes, a page registry, metadata helpers, and a URL parser. */
@@ -577,6 +685,47 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
     config.defaultMetadata ?? {},
   );
 
+  const autoSitemapEntries = pages.flatMap(page => {
+    const sitemap = page.sitemap;
+
+    if (
+      page.path === undefined ||
+      page.path.includes(':') ||
+      sitemap === false ||
+      page.metadata.noIndex === true
+    ) {
+      return [];
+    }
+
+    return [{ path: normalizePath(page.path), ...(sitemap ?? {}) }];
+  });
+
+  const sitemapByPath = new Map<string, SitemapEntry>();
+
+  autoSitemapEntries.forEach(entry => {
+    sitemapByPath.set(entry.path, entry);
+  });
+
+  config.sitemap?.entries?.forEach(entry => {
+    const path = normalizePath(entry.path);
+    sitemapByPath.set(path, { ...sitemapByPath.get(path), ...entry, path });
+  });
+
+  const sitemapEntries =
+    config.sitemap === undefined
+      ? undefined
+      : Array.from(sitemapByPath.values());
+
+  const sitemap =
+    config.sitemap === undefined || sitemapEntries === undefined
+      ? undefined
+      : renderSitemap(config.sitemap.origin, sitemapEntries);
+
+  const robotsTxt =
+    config.sitemap === undefined
+      ? undefined
+      : `Sitemap: ${absoluteUrl(config.sitemap.origin, '/sitemap.xml')}\n`;
+
   const viewForRoute = <Message>(
     route: AppRoute,
     h: HtmlBuilder<Message>,
@@ -601,6 +750,9 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
     metadataForTitle,
     urlToAppRoute,
     defaultMetadata,
+    sitemapEntries,
+    sitemap,
+    robotsTxt,
     headTags: (metadata: FrameworkMetadata) =>
       headTags(config.siteName, metadata, config.headTags),
     renderHeadTags: (metadata: FrameworkMetadata) =>
