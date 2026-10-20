@@ -7,7 +7,7 @@ import { Url, toString as urlToString } from 'foldkit/url';
 
 import { type FrameworkHeadTag, FrameworkMetadata } from './lib/router';
 import type { Model } from './main';
-import { headTags, pageMetadata, urlToAppRoute } from './route';
+import { AppRoute, headTags, href, pageMetadata, urlToAppRoute } from './route';
 
 // MESSAGE
 
@@ -28,6 +28,14 @@ const NavigateInternal = Command.define('NavigateInternal', {
   messages: [Message.CompletedNavigateInternal],
   execute: ({ url }) =>
     pushUrl(url).pipe(Effect.as(Message.CompletedNavigateInternal())),
+});
+
+/** Navigates to a typed route value, building the URL from the router. */
+export const NavigateTo = Command.define('NavigateTo', {
+  args: { route: AppRoute },
+  messages: [Message.CompletedNavigateInternal],
+  execute: ({ route }) =>
+    pushUrl(href(route)).pipe(Effect.as(Message.CompletedNavigateInternal())),
 });
 
 const LoadExternal = Command.define('LoadExternal', {
