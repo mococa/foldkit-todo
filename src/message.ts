@@ -14,6 +14,8 @@ export const Message = defineMessageUnion({
   SucceededGoogleLogin: { session: Session },
   FailedGoogleLogin: { reason: Schema.String },
   LoadedSession: { maybeSession: Schema.Option(Session) },
+  ClickedLogout: {},
+  CompletedLogout: { maybeError: Schema.Option(Schema.String) },
 });
 
 export type Message = typeof Message.Type;

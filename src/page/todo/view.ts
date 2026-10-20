@@ -1,4 +1,5 @@
 import { definePage } from '../../lib/router';
+import { Message } from '../../message';
 import { SITE_NAME } from '../../site';
 
 export const TodoPage = definePage({
@@ -16,6 +17,16 @@ export const TodoPage = definePage({
         h.p(
           [h.Class('text-muted-foreground')],
           ['Todo functionality is coming next.'],
+        ),
+        h.button(
+          [
+            // oxlint-disable-next-line typescript/consistent-type-assertions
+            h.OnClick(Message.ClickedLogout() as never),
+            h.Class(
+              'rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100',
+            ),
+          ],
+          ['Sign out'],
         ),
       ],
     ),

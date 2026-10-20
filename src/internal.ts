@@ -90,6 +90,33 @@ export const CheckSession = Command.define('CheckSession', {
   ),
 });
 
+export const Logout = Command.define('Logout', {
+  messages: [Message.CompletedLogout],
+  execute: Effect.tryPromise({
+    try: async (): Promise<Option.Option<string>> => {
+      if (basebox === undefined) {
+        await sessionStore.clear();
+        return Option.some('Basebox is not configured.');
+      }
+
+      try {
+        const client = basebox.client();
+        await client.auth.logout();
+        return Option.none();
+      } catch (error) {
+        await sessionStore.clear();
+        return Option.some(
+          error instanceof Error ? error.message : 'Logout failed',
+        );
+      }
+    },
+    catch: () => undefined,
+  }).pipe(
+    Effect.catch(() => Effect.succeed(Option.some('Logout failed'))),
+    Effect.map(maybeError => Message.CompletedLogout({ maybeError })),
+  ),
+});
+
 const syncHeadTag = (tag: FrameworkHeadTag): void => {
   const { document } = globalThis;
   const selector = `meta[${tag.attribute}="${tag.key}"]`;
@@ -212,6 +239,14 @@ export const update = (model: Model, message: Message) =>
         maybeLoginError: () => Option.none(),
       }),
       commands: [NavigateTo({ route: AppRoute.Todo() })],
+    }),
+    ClickedLogout: () => ({ model, commands: [Logout()] }),
+    CompletedLogout: ({ maybeError }) => ({
+      model: modifyFields(model, {
+        maybeSession: () => Option.none(),
+        maybeLoginError: () => maybeError,
+      }),
+      commands: [NavigateTo({ route: AppRoute.Login() })],
     }),
     FailedGoogleLogin: ({ reason }) => {
       const nextModel = modifyFields(model, {
