@@ -158,6 +158,48 @@ describe('defineRouter', () => {
   });
 });
 
+describe('URLs and routing', () => {
+  test('builds hrefs from typed routes', () => {
+    expect(routes.href(routes.AppRoute.Home())).toBe('/home');
+    expect(routes.href(routes.AppRoute.User({ id: 42 }))).toBe('/users/42');
+    expect(routes.href(routes.AppRoute.Post({ userId: 7, postId: 42 }))).toBe(
+      '/users/7/posts/42',
+    );
+    expect(
+      routes.href(routes.AppRoute.File({ userId: 7, fileName: 'notes.txt' })),
+    ).toBe('/users/7/files/notes.txt');
+    expect(routes.href(routes.AppRoute.NotFound({ path: '/missing' }))).toBe(
+      '/missing',
+    );
+  });
+
+  test('round-trips hrefs through the parser', () => {
+    const route = routes.AppRoute.Post({ userId: 7, postId: 42 });
+    const url = Option.getOrThrow(
+      urlFromString(`https://example.com${routes.href(route)}`),
+    );
+
+    expect(routes.urlToAppRoute(url)).toEqual(route);
+  });
+
+  test('builds query hrefs', () => {
+    const searchRoutes = defineRouter(config, [SearchPage, NotFoundPage]);
+
+    expect(
+      searchRoutes.href(searchRoutes.AppRoute.Search({ q: 'hello world' })),
+    ).toBe('/search?q=hello+world');
+  });
+
+  test('returns the routing config unchanged', () => {
+    const callbacks = {
+      onUrlRequest: () => ({ _tag: 'Request' as const }),
+      onUrlChange: () => ({ _tag: 'Change' as const }),
+    };
+
+    expect(routes.routing(callbacks)).toBe(callbacks);
+  });
+});
+
 describe('metadata', () => {
   test('merges defaults and page overrides', () => {
     const metadata = richRoutes.pageMetadata(richRoutes.AppRoute.Rich());

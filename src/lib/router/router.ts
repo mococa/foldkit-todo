@@ -1,6 +1,7 @@
 import { Data, Effect, Schema, pipe } from 'effect';
 import { Route } from 'foldkit';
 import type { Html, HtmlBuilder } from 'foldkit/html';
+import type { UrlRequest } from 'foldkit/navigation';
 import {
   type Biparser,
   type Router,
@@ -12,7 +13,9 @@ import {
   slash,
   string,
 } from 'foldkit/route';
+import type { RoutingConfig } from 'foldkit/runtime';
 import type { CallableTaggedStruct } from 'foldkit/schema';
+import type { Url } from 'foldkit/url';
 
 /** The subset of app state passed to a page view: its typed route. */
 export type FrameworkPageModel<
@@ -267,6 +270,14 @@ const asSegmentCodec = (
   // oxlint-disable-next-line typescript/consistent-type-assertions
   schema as Schema.Codec<unknown, string>;
 
+const routePath = (route: unknown): string | undefined => {
+  if (typeof route !== 'object' || route === null || !('path' in route)) {
+    return undefined;
+  }
+
+  return typeof route.path === 'string' ? route.path : undefined;
+};
+
 const routeTag = (route: unknown): string =>
   // oxlint-disable-next-line typescript/consistent-type-assertions
   (route as { _tag: string })._tag;
@@ -278,6 +289,10 @@ const asRoutes = (routes: unknown): Record<string, unknown> =>
 const asUnknownRouter = (router: unknown): Router<unknown> =>
   // oxlint-disable-next-line typescript/consistent-type-assertions
   router as Router<unknown>;
+
+const asHrefBuilder = (router: unknown): ((route: unknown) => string) =>
+  // oxlint-disable-next-line typescript/consistent-type-assertions
+  router as (route: unknown) => string;
 
 const asRouter = <Routes>(
   createRouter: unknown,
@@ -741,7 +756,27 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
     return view({ route }, h);
   };
 
+  const href = (route: AppRoute): string => {
+    const page = pageForRoute(route);
+    const router = routerFor(page);
+
+    if (router === undefined) {
+      const maybePath = routePath(route);
+
+      return typeof maybePath === 'string' ? maybePath : '/';
+    }
+
+    return asHrefBuilder(router)(route);
+  };
+
+  const routing = <RequestMessage, ChangeMessage>(config: {
+    onUrlRequest: (request: UrlRequest) => RequestMessage;
+    onUrlChange: (url: Url) => ChangeMessage;
+  }): RoutingConfig<RequestMessage | ChangeMessage> => config;
+
   return {
+    href,
+    routing,
     AppRoute,
     PageRegistry: pageRegistry,
     pageForRoute,
