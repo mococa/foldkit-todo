@@ -1,15 +1,16 @@
 import type { HtmlBuilder } from 'foldkit/html';
 
-import type { Model } from '../../main';
 import { SITE_NAME } from '../metadata';
-import { definePage } from '../page';
+import { type PageModel, createPage } from '../page';
 
-export const LoginPage = definePage({
+export const LoginPage = createPage({
+  tag: 'Login',
+  path: 'login',
   metadata: {
     title: `Sign In | ${SITE_NAME}`,
     description: 'Sign in to Foldkit Drawing Studio to start drawing.',
   },
-  view: <Message>(_model: Model, h: HtmlBuilder<Message>) =>
+  view: <Message>(_model: PageModel, h: HtmlBuilder<Message>) =>
     h.div(
       [h.Class('grid min-h-svh md:grid-cols-2')],
       [leftPanel(h), rightPanel(h)],

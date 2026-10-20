@@ -1,16 +1,19 @@
+import { Schema } from 'effect';
 import type { HtmlBuilder } from 'foldkit/html';
 
-import type { Model } from '../../main';
 import { SITE_NAME } from '../metadata';
-import { definePage } from '../page';
+import { type PageModel, createPage } from '../page';
 
-export const NotFoundPage = definePage({
+export const NotFoundPage = createPage({
+  tag: 'NotFound',
+  path: undefined,
+  route: { path: Schema.String },
   metadata: {
     title: `Not Found | ${SITE_NAME}`,
     description: 'The page you are looking for does not exist.',
   },
-  view: <Message>(model: Model, h: HtmlBuilder<Message>) => {
-    const path = model.route._tag === 'NotFound' ? model.route.path : '';
+  view: <Message>(model: PageModel, h: HtmlBuilder<Message>) => {
+    const path = model.route.path ?? '';
 
     return h.section(
       [h.Class('grid gap-4')],
