@@ -1,10 +1,9 @@
 import { Schema } from 'effect';
 import { Runtime } from 'foldkit';
-import { type Document, type Html, type HtmlBuilder } from 'foldkit/html';
+import { type Document, type HtmlBuilder } from 'foldkit/html';
 
 import type { Message } from './internal';
-import { pageForRoute, pageMetadata } from './page/registry';
-import { AppRoute, urlToAppRoute } from './route';
+import { AppRoute, pageMetadata, urlToAppRoute, viewForRoute } from './route';
 
 export { Message, update } from './internal';
 
@@ -24,10 +23,18 @@ export const init: Runtime.RoutingApplicationInit<Model, Message> = url => ({
 
 // VIEW
 
-const layout = (model: Model, h: HtmlBuilder<Message>): Html =>
-  pageForRoute(model.route).view(model, h);
+export const view = (model: Model, h: HtmlBuilder<Message>): Document => {
+  const metadata = pageMetadata(model.route);
 
-export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
-  title: pageMetadata(model.route).title,
-  body: h.main([h.Class('flex min-h-screen flex-col')], [layout(model, h)]),
-});
+  return {
+    title: metadata.title,
+    ...(metadata.canonical === undefined
+      ? {}
+      : { canonical: metadata.canonical }),
+    ...(metadata.ogUrl === undefined ? {} : { ogUrl: metadata.ogUrl }),
+    body: h.main(
+      [h.Class('flex min-h-screen flex-col')],
+      [viewForRoute(model.route, h)],
+    ),
+  };
+};

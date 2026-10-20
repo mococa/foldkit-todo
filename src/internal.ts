@@ -5,10 +5,9 @@ import { UrlRequest, load, pushUrl } from 'foldkit/navigation';
 import { modifyFields } from 'foldkit/struct';
 import { Url, toString as urlToString } from 'foldkit/url';
 
+import { type FrameworkHeadTag, FrameworkMetadata } from './lib/router';
 import type { Model } from './main';
-import { type HeadTag, PageMetadata, headTags } from './page/metadata';
-import { pageMetadata } from './page/registry';
-import { urlToAppRoute } from './route';
+import { headTags, pageMetadata, urlToAppRoute } from './route';
 
 // MESSAGE
 
@@ -38,7 +37,7 @@ const LoadExternal = Command.define('LoadExternal', {
     load(href).pipe(Effect.as(Message.CompletedLoadExternal())),
 });
 
-const syncHeadTag = (tag: HeadTag): void => {
+const syncHeadTag = (tag: FrameworkHeadTag): void => {
   const { document } = globalThis;
   const selector = `meta[${tag.attribute}="${tag.key}"]`;
   const existing = document.head.querySelector(selector);
@@ -59,18 +58,41 @@ const syncHeadTag = (tag: HeadTag): void => {
   existing.setAttribute('content', tag.content);
 };
 
+const documentHeadTags = (metadata: FrameworkMetadata) =>
+  headTags({ ...metadata, ogUrl: undefined });
+
 const SyncDocumentMetadata = Command.define('SyncDocumentMetadata', {
-  args: { metadata: PageMetadata },
+  args: { previous: FrameworkMetadata, next: FrameworkMetadata },
   messages: [Message.CompletedSyncDocumentMetadata],
-  execute: ({ metadata }) =>
-    Effect.forEach(
-      headTags(metadata),
+  execute: ({ previous, next }) => {
+    const nextTags = documentHeadTags(next);
+    const nextKeys = new Set(
+      nextTags.map(tag => `${tag.attribute}:${tag.key}`),
+    );
+
+    return Effect.forEach(
+      documentHeadTags(previous),
       tag =>
         Effect.sync(() => {
-          syncHeadTag(tag);
+          if (!nextKeys.has(`${tag.attribute}:${tag.key}`)) {
+            syncHeadTag({ ...tag, content: undefined });
+          }
         }),
       { discard: true },
-    ).pipe(Effect.as(Message.CompletedSyncDocumentMetadata())),
+    ).pipe(
+      Effect.andThen(
+        Effect.forEach(
+          nextTags,
+          tag =>
+            Effect.sync(() => {
+              syncHeadTag(tag);
+            }),
+          { discard: true },
+        ),
+      ),
+      Effect.as(Message.CompletedSyncDocumentMetadata()),
+    );
+  },
 });
 
 // UPDATE
@@ -98,7 +120,10 @@ export const update = (model: Model, message: Message) =>
       return {
         model: nextModel,
         commands: [
-          SyncDocumentMetadata({ metadata: pageMetadata(nextModel.route) }),
+          SyncDocumentMetadata({
+            previous: pageMetadata(model.route),
+            next: pageMetadata(nextModel.route),
+          }),
         ],
       };
     },

@@ -2,21 +2,22 @@ import { Effect } from 'effect';
 import { Server } from 'foldkit/experimental';
 
 import { init, view } from '../main';
-import { mergeMetadata, renderHeadTags } from '../page/metadata';
-import { metadataForTitle } from '../page/registry';
+import { metadataForTitle, renderHeadTags } from '../route';
 
 export const renderDocument: Server.DocumentRenderer = (
   application,
   assets,
 ) => {
-  const metadata =
-    metadataForTitle(application.title) ??
-    mergeMetadata({
-      title: application.title,
-    });
+  const metadata = metadataForTitle(application.title) ?? {
+    title: application.title,
+  };
 
   return Server.renderDocument(application, assets, {
-    head: renderHeadTags(metadata),
+    head: renderHeadTags({
+      ...metadata,
+      canonical: undefined,
+      ogUrl: undefined,
+    }),
   });
 };
 
