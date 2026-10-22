@@ -223,14 +223,18 @@ export const definePage = <
   page: PageDefinition<Tag, Fields, Path, Inputs>,
 ): PageDefinition<Tag, Fields, Path, Inputs> => page;
 
+type AnyBiparser = Biparser<any>;
+type AnyRouter = Router<any>;
+type AnyView = (model: any, h: any, inputs: any) => Html;
+
 type AnyPage = Readonly<{
   tag: string;
   path: string | undefined;
   route?: Schema.Struct.Fields;
   metadata: FrameworkMetadataOverrides;
   sitemap?: false | PageSitemap;
-  view: unknown;
-  createRouter?: unknown;
+  view: AnyView;
+  createRouter?: ((routes: any) => AnyRouter) | undefined;
 }>;
 
 type TaggedUnionProperty = keyof Schema.TaggedUnion<{}>;
@@ -268,12 +272,6 @@ const entriesToRecord = <RecordType>(
   // oxlint-disable-next-line typescript/consistent-type-assertions
   Object.fromEntries(entries) as RecordType;
 
-const asSegmentCodec = (
-  schema: Schema.Constraint,
-): Schema.Codec<unknown, string> =>
-  // oxlint-disable-next-line typescript/consistent-type-assertions
-  schema as Schema.Codec<unknown, string>;
-
 const routePath = (route: unknown): string | undefined => {
   if (typeof route !== 'object' || route === null || !('path' in route)) {
     return undefined;
@@ -282,27 +280,18 @@ const routePath = (route: unknown): string | undefined => {
   return typeof route.path === 'string' ? route.path : undefined;
 };
 
-const routeTag = (route: unknown): string =>
-  // oxlint-disable-next-line typescript/consistent-type-assertions
-  (route as { _tag: string })._tag;
+const routeTag = (route: unknown): string => {
+  if (
+    typeof route !== 'object' ||
+    route === null ||
+    !('_tag' in route) ||
+    typeof route._tag !== 'string'
+  ) {
+    throw new RouterBuildFailure({ message: 'Route value has no tag' });
+  }
 
-const asRoutes = (routes: unknown): Record<string, unknown> =>
-  // oxlint-disable-next-line typescript/consistent-type-assertions
-  routes as Record<string, unknown>;
-
-const asUnknownRouter = (router: unknown): Router<unknown> =>
-  // oxlint-disable-next-line typescript/consistent-type-assertions
-  router as Router<unknown>;
-
-const asHrefBuilder = (router: unknown): ((route: unknown) => string) =>
-  // oxlint-disable-next-line typescript/consistent-type-assertions
-  router as (route: unknown) => string;
-
-const asRouter = <Routes>(
-  createRouter: unknown,
-): ((routes: Routes) => Router<unknown>) =>
-  // oxlint-disable-next-line typescript/consistent-type-assertions
-  createRouter as (routes: Routes) => Router<unknown>;
+  return route._tag;
+};
 
 const asFallbackConstructor = <Route>(
   route: unknown,
@@ -310,65 +299,43 @@ const asFallbackConstructor = <Route>(
   // oxlint-disable-next-line typescript/consistent-type-assertions
   route as { make: (data: { path: string }) => Route };
 
-const routeConstructor = <Route>(
-  constructor: unknown,
-): { make: (data: Record<string, unknown>) => Route } => ({
-  make: data =>
-    // oxlint-disable-next-line typescript/consistent-type-assertions
-    (constructor as (data: Record<string, unknown>) => Route)(data),
-});
-
-const appendPage = <Pages extends ReadonlyArray<AnyPage>, Page extends AnyPage>(
-  pages: Pages,
-  page: Page,
-): readonly [...Pages, Page] =>
-  // oxlint-disable-next-line typescript/consistent-type-assertions
-  [...pages, page] as readonly [...Pages, Page];
-
-const asParser = <A>(parser: Biparser<A>): Biparser<Record<string, unknown>> =>
-  // oxlint-disable-next-line typescript/consistent-type-assertions
-  parser as Biparser<Record<string, unknown>>;
-
 const segmentParser = (
   route: Schema.Struct.Fields,
   name: string,
-): Biparser<Record<string, unknown>> => {
-  const schema = route[name];
+): AnyBiparser => {
+  const schema: any = route[name];
 
   if (schema === undefined) {
     throw new MissingRouteSchema({ param: name });
   }
 
   if (schema === Schema.Number) {
-    return asParser(int(name));
+    return int(name);
   }
 
   if (schema === Schema.String) {
-    return asParser(string(name));
+    return string(name);
   }
 
-  return asParser(schemaSegment(name, asSegmentCodec(schema)));
+  return schemaSegment(name, schema);
 };
 
 const buildPathParser = (
   path: string,
   route: Schema.Struct.Fields,
-): Biparser<Record<string, unknown>> => {
+): AnyBiparser => {
   const parser = path
     .split('/')
     .filter(segment => segment !== '')
-    .reduce<Biparser<Record<string, unknown>> | undefined>(
-      (current, segment) => {
-        const next = segment.startsWith(':')
-          ? segmentParser(route, segment.slice(1))
-          : asParser(literal(segment));
+    .reduce<AnyBiparser | undefined>((current, segment) => {
+      const next: AnyBiparser = segment.startsWith(':')
+        ? segmentParser(route, segment.slice(1))
+        : literal(segment);
 
-        return current === undefined ? next : pipe(current, slash(next));
-      },
-      undefined,
-    );
+      return current === undefined ? next : pipe(current, slash(next));
+    }, undefined);
 
-  return parser ?? asParser(root);
+  return parser ?? root;
 };
 
 const escapeAttributeValue = (value: string): string =>
@@ -654,27 +621,32 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
   const metadataForTitle = (title: string): FrameworkMetadata | undefined =>
     allMetadata.find(metadata => metadata.title === title);
 
-  const routerFor = (page: PageEntry): Router<unknown> | undefined => {
+  const routeConstructorFor = (
+    tag: string,
+  ): { make: (data: any) => AppRoute } => {
+    const constructor: any =
+      // oxlint-disable-next-line typescript/consistent-type-assertions
+      AppRoute[tag as keyof typeof AppRoute];
+
+    if (constructor === undefined) {
+      throw new RouterBuildFailure({ message: `Unknown route tag: ${tag}` });
+    }
+
+    return { make: data => constructor.make(data) };
+  };
+
+  const routerFor = (page: PageEntry): AnyRouter | undefined => {
     if (page.createRouter !== undefined) {
-      return asRouter<Record<string, unknown>>(page.createRouter)(
-        asRoutes(AppRoute),
-      );
+      return page.createRouter(AppRoute);
     }
 
     if (page.path === undefined) {
       return undefined;
     }
 
-    return asUnknownRouter(
-      pipe(
-        buildPathParser(page.path, page.route ?? {}),
-        Route.mapTo(
-          routeConstructor<AppRoute>(
-            // oxlint-disable-next-line typescript/consistent-type-assertions
-            AppRoute[page.tag as keyof typeof AppRoute],
-          ),
-        ),
-      ),
+    return pipe(
+      buildPathParser(page.path, page.route ?? {}),
+      Route.mapTo(routeConstructorFor(page.tag)),
     );
   };
 
@@ -693,7 +665,7 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
     throw new MissingFallbackRoute({ tag: config.fallbackTag });
   }
 
-  const urlToAppRoute = Route.parseUrlWithFallback(
+  const urlToAppRoute: (url: Url) => AppRoute = Route.parseUrlWithFallback(
     routeParser,
     asFallbackConstructor<AppRoute>(fallbackRoute),
   );
@@ -752,14 +724,7 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
   ): Html => {
     const page = pageForRoute(route);
 
-    // oxlint-disable-next-line typescript/consistent-type-assertions
-    const view = page.view as unknown as (
-      model: FrameworkPageModel<AppRoute>,
-      h: HtmlBuilder<Message>,
-      inputs: unknown,
-    ) => Html;
-
-    return view({ route }, h, inputs);
+    return page.view({ route }, h, inputs);
   };
 
   const href = (route: AppRoute): string => {
@@ -772,7 +737,7 @@ export const defineRouter = <const Pages extends ReadonlyArray<AnyPage>>(
       return typeof maybePath === 'string' ? maybePath : '/';
     }
 
-    return asHrefBuilder(router)(route);
+    return router.build(route);
   };
 
   const routing = <RequestMessage, ChangeMessage>(config: {
@@ -882,7 +847,9 @@ export class RouterBuilder<Pages extends ReadonlyArray<AnyPage>> {
   route<const Page extends AnyPage>(
     page: Page,
   ): RouterBuilder<readonly [...Pages, Page]> {
-    return new RouterBuilder(this.config, appendPage(this.pages, page));
+    const nextPages: readonly [...Pages, Page] = [...this.pages, page];
+
+    return new RouterBuilder(this.config, nextPages);
   }
 
   build() {
